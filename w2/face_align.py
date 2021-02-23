@@ -1,9 +1,11 @@
 import cv2
 import numpy as np
 from skimage import transform as trans
-import mxnet as mx
+# import mxnet as mx
 import matplotlib.pyplot as plt
+import torch
 from datetime import datetime
+from mobilenet import Mobilenet
 
 src1 = np.array([[51.642, 50.115], [57.617, 49.990], [35.740, 69.007],
                  [51.157, 89.050], [57.025, 89.702]],
@@ -41,13 +43,13 @@ arcface_src = np.array(
 # In[66]:
 
 class FaceAlign:
-    def __init__(self,pretrained_model_path,epoch):
-        self.model= self.get_model(pretrained_model_path,epoch,image_size=192)
-    
+    def __init__(self,pretrained_model_path):
+        self.device= torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.model= self.get_model(pretrained_model_path,self.device)
     def align(self,image_path):
         img = cv2.imread(img_path)
         img=cv2.resize(img,(192,192))
-        landmarks=self.get_landmark(img,self.model)
+        landmarks=self.get_landmark(img,self.model,self.device)
         landmarks = np.round(landmarks).astype(np.int)
         indexs=[38,88,74,52,68]
         wraped=self.norm_crop(img,landmarks[indexs],image_size=112,mode="arcface")
@@ -81,30 +83,23 @@ class FaceAlign:
                 min_M = M
                 min_index = i
         return min_M, min_index
-    def get_model(self,prefix,epoch,image_size):
-        sym, arg_params, aux_params = mx.model.load_checkpoint(prefix, epoch)
-        all_layers = sym.get_internals()
-        sym = all_layers['fc1_output']
-        model = mx.mod.Module(symbol=sym, context=mx.cpu(), label_names=None)
-        model.bind(for_training=False,
-                    data_shapes=[('data', (1, 3, image_size, image_size))
-                                ])
-        model.set_params(arg_params, aux_params)
+    def get_model(self,prefix,device):
+        model=Mobilenet(prefix).to(device)
         return model
     # lmk is prediction; src is template
     
 
-    def get_landmark(self,img,model):
+    def get_landmark(self,img,model,device):
         image_size = (img.shape[1], img.shape[1])
-        input_blob = np.zeros((1, 3) + image_size, dtype=np.float32)
-        
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img = np.transpose(img, (2, 0, 1))  #3*112*112, RGB
-        input_blob[0] = img
-        data = mx.nd.array(input_blob)
-        db = mx.io.DataBatch(data=(data, ))
-        model.forward(db, is_train=False)
-        pred = model.get_outputs()[-1].asnumpy()[0]
+        img_tensor=torch.from_numpy(img)
+        img_tensor=img_tensor.unsqueeze(0)
+        img_tensor=img_tensor.to(device)
+        with torch.no_grad():
+            pred=model(img_tensor)
+        pred=pred.squeeze().numpy()
+
         if pred.shape[0] >= 3000:
             pred = pred.reshape((-1, 3))
         else:
@@ -116,13 +111,13 @@ class FaceAlign:
         return pred
 if __name__ == '__main__':
     t1=datetime.now()
-    prefix='C:\\Users\\thanhdh6\\Documents\\projects\\insightface\\alignment\\model\\2d106det' # path to pretrained model
+    prefix='C:\\Users\\thanhdh6\\Documents\\projects\\insightface\\alignment\\model\\kit_pytorch.npy' # path to pretrained model
     img_path1='C:\\Users\\thanhdh6\\Downloads\\face-2-289x300.png'
     img_path2='C:\\Users\\thanhdh6\\Downloads\\argan-oil-for-your-face_1920x1080.jpg'
     img_path3='C:\\Users\\thanhdh6\\Documents\\datasets\\lfw\\Abid_Hamid_Mahmud_Al-Tikriti\\Abid_Hamid_Mahmud_Al-Tikriti_0002.jpg'
     
     fig, ax = plt.subplots(3,2)
-    faceAlign=FaceAlign(prefix,0)
+    faceAlign=FaceAlign(prefix)
 
     img_paths=[img_path1,img_path2,img_path3]
     for i,img_path in enumerate(img_paths):
@@ -139,4 +134,3 @@ if __name__ == '__main__':
     print('Time: %s' %(t2-t1))
     plt.show()
     cv2.waitKey(0)  
-
