@@ -1,0 +1,4 @@
+Epoch 0 step 0
+	Loss average 0.021367
+	Loss valid average 2.461787, acc valid 0.119467
+learning_rate 0.001000
