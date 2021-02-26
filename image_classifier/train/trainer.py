@@ -1,6 +1,6 @@
 import torch
 import os
-from shutil import copy
+# from shutil import copy
 from torch.utils.tensorboard import SummaryWriter
 from torch import nn
 from torch.optim import SGD
@@ -72,7 +72,7 @@ class Trainer:
         # config output
         if not os.path.isdir(self.output_folder):
             os.makedirs(self.output_folder)
-        copy(self.config_files, self.output_folder)
+        # copy(self.config_files, self.output_folder)
 
         # tensorboard
         self.summaryWriter = SummaryWriter(self.output_folder)
