@@ -1,13 +1,24 @@
 import torch
 import os
 from shutil import copy
-from utils.utils import save_loss_to_file
 from torch.utils.tensorboard import SummaryWriter
+from torch import nn
+from torch.optim import SGD
+from torchvision.models import resnet18
+from torchvision import transforms
+from tqdm import tqdm
+import sys
+sys.path.append("C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier")
+from utils.utils import save_loss_to_file
+from models.cnn import CNN, TransferNet
 from data.datasets import ListDataset
+from utils.metric import Accuracy
+from data.data_handler import DataHandler
+from data.men_women_dataset import MenWomenDataset
 
 
 class Trainer:
-    def __init__(self, configs, data):
+    def __init__(self,net, data, optimizer, crition,transform_test, metric, lr_schedule,lr_scheduler=None,  configs=None):
         '''
         target: initialize trainer for training
         inputs:
@@ -22,44 +33,40 @@ class Trainer:
                 - loss_file: String - name of file in output_folder contain loss training process
             - data: instance Data classes in data folder
         '''
-        self.lr = configs.lr
-        self.batch_size = configs.batch_size
-        self.num_epochs = configs.num_epochs
-        self.crition = configs.loss_function
-        self.net = configs.net["class"](**configs.net["net_args"])
-        self.optimizer = configs.optimizer["class"](
-            self.net.parameters(), self.lr, **configs.optimizer["optimizer_args"])
-        self.transform_test = configs.transform_test
-
-        # schedule learning rate
-        if configs.lr_schedule is None:
-            self.lr_scheduler = None
-        else:
-            self.lr_scheduler = configs.lr_schedule["class"](
-                self.optimizer, **configs.lr_schedule["schedule_args"])
-            self.lr_shedule_metric = configs.lr_schedule["metric"]
-            self.lr_schedule_step_type = configs.lr_schedule["step_type"]
-
+        self.lr = configs['lr']
+        self.batch_size = data.bs
+        self.num_epochs = configs['num_epochs']
+        self.crition = crition
+        self.net = net
+        self.optimizer = optimizer
+        self.transform_test = transform_test
         # data
         self.data = data
-
         # evaluate
-        self.metric = configs.metric["class"](**configs.metric["metric_args"])
+        self.metric = metric
+
+        # schedule learning rate
+        if configs['lr_schedule'] is None:
+            self.lr_scheduler = None
+        else:
+            self.lr_scheduler = lr_scheduler
+            self.lr_shedule_metric = lr_schedule["metric"]
+            self.lr_schedule_step_type = lr_schedule["step_type"]
 
         # training process
         self.current_epoch = 0
         self.list_loss = []
-        self.steps_save_loss = configs.steps_save_loss
-        self.output_folder = configs.output_folder
-        self.config_files = configs.config_files
+        self.steps_save_loss = configs['steps_save_loss']
+        self.output_folder = configs['output_folder']
+        self.config_files = configs['config_files']
 
         # define loss file
-        self.loss_file = configs.loss_file
+        self.loss_file = configs['loss_file']
 
         # config cuda
-        cuda = configs.device
+        cuda = configs['device']
         self.device = torch.device(
-            cuda if cuda == "cpu" else "cuda:"+str(configs.gpu_id))
+            cuda if cuda == "cpu" else "cuda:"+str(configs['gpu_id']))
         self.net.to(self.device)
 
         # config output
@@ -79,7 +86,7 @@ class Trainer:
         '''
         if loss_file is not None:
             self.loss_file = loss_file
-        for epoch in range(self.current_epoch, self.num_epochs):
+        for epoch in tqdm(range(self.current_epoch, self.num_epochs)):
             self.current_epoch = epoch
             self.train_one_epoch()
             self.save_checkpoint()
@@ -105,7 +112,7 @@ class Trainer:
         '''
 
         train_loss = 0
-        for i, sample in enumerate(self.data.train_loader):
+        for i, sample in enumerate(self.data.train_dl): 
             self.net.train()
             images, labels = sample[0].to(
                 self.device), sample[1].to(self.device)
@@ -175,9 +182,9 @@ class Trainer:
         if metric is None:
             metric = self.metric
         loader = {
-            "val": self.data.val_loader,
-            "train": self.data.train_loader,
-            "test": self.data.test_loader
+            "val": self.data.val_dl,
+            "train": self.data.train_dl,
+            "test": self.data.test_dl
         }
         output_list = []
         label_list = []
@@ -259,3 +266,71 @@ class Trainer:
         file_path = os.path.join(self.output_folder, filename)
         self.net.load_state_dict(torch.load(
             file_path, map_location=self.device))
+
+
+if __name__ == "__main__":
+    # dataset building
+    train_dataset_config = {
+        'root_dir': "C:\\Users\\thanhdh6\\Documents\\datasets\\menwomen1",
+        "csv_file_path": 'C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier\\data\\train.csv',
+        'img_size': 224,
+        'label_cols_list': ['Labels']
+    }
+    test_dataset_config = {
+        'root_dir': "C:\\Users\\thanhdh6\\Documents\\datasets\\menwomen1",
+        'csv_file_path': 'C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier\\data\\test.csv',
+        'img_size': 224,
+        'label_cols_list': ['Labels']
+    }
+    cfgs = {'img_size': 224, 'bs': 2, 'n_workers': 2}
+
+    transform_train = transforms.Compose([
+        transforms.ToPILImage(),
+        # transforms.ToTensor(),
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
+    ])
+    transform_test = transforms.Compose([
+        transforms.ToPILImage(),
+        # transforms.ToTensor(),
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+    ])
+    transforms = [transform_train, transform_test]
+    dataset_configs = (train_dataset_config, test_dataset_config)
+    datahandler = DataHandler(ds_class=(MenWomenDataset, MenWomenDataset),
+                              transforms=transforms, dataset_configs=dataset_configs, configs=cfgs)
+
+    # trainer buiding
+    trainer_configs = {
+        'model_path': '',
+        'validate': 0.7,
+        'lr': 0.001,
+        'num_epochs': 10,
+        'steps_save_loss': 100,
+        'output_folder': 'C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier\\train\\logs',
+        'device': 'cpu',
+        'gpu_id': 0,
+        # 'batch_size':2,
+        'lr_schedule':None,
+        'config_files':'C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier\\configs\\cifar_configs.py',
+        'loss_file':"loss_file.txt"
+
+    }
+    
+    net = TransferNet(model_base=resnet18, pretrain=True,
+                      fc_channels=[512], num_classes=2)
+    optimizer_config={
+        'momentum':0.9
+    }
+    optimizer = SGD(net.parameters(),lr=1e-4,momentum=0.9)
+    metric = Accuracy(threshold=0.5, from_logits=True)
+    crition= nn.CrossEntropyLoss()
+    lr_schedule = None
+    trainer = Trainer(net, datahandler, optimizer, crition,transform_test, metric, lr_schedule=None,configs=trainer_configs)
+    trainer.train()
+

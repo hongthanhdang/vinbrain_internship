@@ -1,5 +1,4 @@
 from config import cifar_configs
-import torch.nn as nn
 from train.trainer import Trainer
 from data.data_handler import DataHandler
 
