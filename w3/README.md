@@ -1,5 +1,5 @@
 # Tasks:
-## Duration: 17 February 2021 - 19 February 2021
+## Duration: 22 February 2021 - 27 February 2021
 1. Create train pinline consist of dataset, datahandler, trainer.
 2. Using pinline to train on Cifar10 dataset.
 3. Using pinline to train on men/women dataset.
