@@ -22,6 +22,23 @@ class Denormalize(Module):
     def forward(self, x):
         return x*self.mean.view(1, 3, 1, 1) + self.std.view(1, 3, 1, 1)
 
+class AverageMeter:
+    """Computes and stores the average and current value"""
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
 def make_imgs(xb, n_row=8, denorm=Denormalize(), device=torch.device('cpu'), plot=True):
     xb = xb[:n_row].to(device)
     xb = denorm(xb) 

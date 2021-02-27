@@ -9,7 +9,7 @@ from torchvision import transforms
 from tqdm import tqdm
 import sys
 sys.path.append("C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier")
-from utils.utils import save_loss_to_file
+from utils.utils import save_loss_to_file,AverageMeter
 from models.cnn import CNN, TransferNet
 from data.datasets import ListDataset
 from utils.metric import Accuracy
@@ -179,6 +179,8 @@ class Trainer:
             - loss: average loss of whole dataset
             - metric_value
         '''
+        self.net.eval()
+        val_loss_value= AverageMeter()
         if metric is None:
             metric = self.metric
         loader = {
@@ -186,23 +188,20 @@ class Trainer:
             "train": self.data.train_dl,
             "test": self.data.test_dl
         }
-        output_list = []
-        label_list = []
-        loss = 0
-        self.net.eval()
+        preds,targets=[],[]
         with torch.no_grad():
-            for i, samples in enumerate(loader[mode]):
-                images, labels = samples[0].to(
-                    self.device), samples[1].to(self.device)
-                outputs = self.net(images)
-                loss += self.crition(outputs, labels)
-                output_list.append(outputs)
-                label_list.append(labels)
+            for xb,yb in loader[mode]:
+                xb,yb = xb.to(self.device),yb.to(self.device)
+                output = self.net(xb)
+                loss = self.crition(output, yb)
+                preds.append(output)
+                targets.append(yb)
+                val_loss_value.update(val=loss.item())
             # import pdb; pdb.set_trace()
-            output_tensor = torch.cat(output_list)
-            label_tensor = torch.cat(label_list)
-            metric_result = metric(output_tensor, label_tensor)
-            return loss/(i+1), metric_result
+            preds_tensor = torch.cat(preds)
+            targets_tensor = torch.cat(targets)
+            metric_result = metric(preds_tensor, targets_tensor)
+            return val_loss_value.avg, metric_result
 
     def get_prediction(self, list_img):
         '''
@@ -332,5 +331,7 @@ if __name__ == "__main__":
     crition= nn.CrossEntropyLoss()
     lr_schedule = None
     trainer = Trainer(net, datahandler, optimizer, crition,transform_test, metric, lr_schedule=None,configs=trainer_configs)
-    trainer.train()
+    # trainer.train()
+    trainer.load_checkpoint("C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier\\train\\logs\\checkpoint_9")
+    print(trainer.evaluate(mode="val",metric=Accuracy()))
 
