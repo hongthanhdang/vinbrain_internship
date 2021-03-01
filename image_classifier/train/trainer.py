@@ -6,7 +6,7 @@ from torch import nn
 from torch.optim import SGD
 from torchvision.models import resnet18
 from torchvision import transforms
-from torch_lr_finder import LRFinder
+# from torch_lr_finder import LRFinder
 from tqdm import tqdm
 from torch.optim.lr_scheduler import OneCycleLR
 import sys
@@ -49,7 +49,7 @@ class Trainer:
 
         # schedule learning rate
         if lr_scheduler is not None:
-            steps_per_epoch=len(data.train_dl)//self.batch_size
+            steps_per_epoch=len(data.train_dl)
             self.lr_scheduler = lr_scheduler(self.optimizer,max_lr=0.0005,epochs=self.num_epochs,steps_per_epoch=steps_per_epoch)
 
         # training process
