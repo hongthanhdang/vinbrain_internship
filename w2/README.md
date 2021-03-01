@@ -6,4 +6,4 @@
 
 # Results
 1. Create face aligment module
-pretrain mobilenet model https://drive.google.com/file/d/18eVvKCfquwEJbPR4DRh8ryxGmPtVqPyY/view?usp=sharing
+pretrain mobilenet model https://drive.google.com/file/d/1w2YpAicTncxQwAcYaZgY2yGeDgqUq3N7/view?usp=sharing

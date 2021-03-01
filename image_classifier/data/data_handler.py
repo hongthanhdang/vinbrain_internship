@@ -29,7 +29,7 @@ class DataHandler:
             config: img_size,bs,n_worker
         """
         self.img_size, self.bs,self.n_workers = configs['img_size'], configs['bs'],configs['n_workers']
-        self.transforms = transforms
+        self.transforms = (None, None)
         self.ds_class=ds_class
         self.dataset_configs=dataset_configs
         self._initialize_data()
@@ -41,7 +41,7 @@ class DataHandler:
         self.train_ds = self._create_ds(
             ds_class=self.ds_class[0], transforms=self.transforms[0], img_size=self.img_size, dataset_config=self.dataset_configs[0])
         self.val_ds = self._create_ds(
-            ds_class=self.ds_class[1], transforms=self.transforms[1], img_size=self.img_size, dataset_config=self.dataset_configs[1])
+            ds_class=self.ds_class[1], transforms=self.transforms[1], img_size=self.img_size, dataset_config=self.dataset_configs[1],mode='val')
         self.train_dl = self._create_dl(self.train_ds, shuffle=True)
         self.val_dl = self._create_dl(self.val_ds, shuffle=True)
         self.test_ds = None
@@ -50,9 +50,9 @@ class DataHandler:
         else:
             self.test_dl = None
 
-    def _create_ds(self, ds_class, transforms=None, img_size=None, dataset_config=None):
-        return ds_class(root_dir=dataset_config['root_dir'], csv_file_path=dataset_config['csv_file_path'],img_size=dataset_config['img_size'],
-                        label_cols_list=dataset_config['label_cols_list'], transforms=transforms)
+    def _create_ds(self, ds_class, transforms=None, img_size=None, dataset_config=None,mode='train'):
+        return ds_class(root_dir=dataset_config['root_dir'], csv_file_path=dataset_config['csv_file_path'],
+                        label_cols_list=dataset_config['label_cols_list'], transforms=transforms,configs=dataset_config,mode=mode)
 
     def _create_dl(self, dataset, shuffle, bs=None, **kwargs):
         return DataLoader(dataset=dataset, batch_size=bs or self.bs, shuffle=shuffle,
@@ -90,13 +90,19 @@ if __name__ == "__main__":
         'root_dir': "C:\\Users\\thanhdh6\\Documents\\datasets\\menwomen1",
         "csv_file_path": 'C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier\\data\\train.csv',
         'img_size':224,
-        'label_cols_list': ['Labels']
+        'label_cols_list': ['Labels'],
+        'imagenet':False,
+        'img_size':256,
+        'crop_size':250,
+        'n_crops':5,
+        'pixel_mean':128,
+        'pixel_std':50
     }
     test_dataset_config = {
         'root_dir': "C:\\Users\\thanhdh6\\Documents\\datasets\\menwomen1",
         'csv_file_path': 'C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier\\data\\test.csv',
         'img_size':224,
-        'label_cols_list': ['Labels']
+        'label_cols_list': ['Labels'],
     }
     cfgs = {'img_size': 224, 'bs': 2, 'n_workers': 2}
 
@@ -121,13 +127,14 @@ if __name__ == "__main__":
     ])
 
     transforms=[transform_train,transform_test]
+
     dataset_configs = (train_dataset_config, test_dataset_config)
-    datahandler = DataHandler(ds_class=(MenWomenDataset, MenWomenDataset), transforms=transforms, dataset_configs=dataset_configs, configs=cfgs)
-    datahandler.show_batch(1,6,mode='train')
-    # from tqdm import tqdm
-    # pbar = tqdm(datahandler.train_dl, ncols=80, desc='Training')
-    # for step, minibatch in enumerate(pbar):
-    #     print(minibatch[1].shape)
+    datahandler = DataHandler(ds_class=(MenWomenDataset, MenWomenDataset), transforms=None, dataset_configs=dataset_configs, configs=cfgs)
+    # datahandler.show_batch(1,6,mode='train')
+    from tqdm import tqdm
+    pbar = tqdm(datahandler.train_dl, ncols=80, desc='Training')
+    for step, minibatch in enumerate(pbar):
+        print(minibatch[1].shape)
     
 
     # pbar = tqdm(datahandler.val_dl, ncols=80, desc='Training')

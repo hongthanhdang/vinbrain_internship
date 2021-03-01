@@ -40,6 +40,7 @@ class Trainer:
         self.net = net
         self.optimizer = optimizer
         self.transform_test = transform_test
+        self.n_crops=configs['n_crops']
         # data
         self.data = data
         # evaluate
@@ -114,10 +115,14 @@ class Trainer:
         train_loss = 0
         for i, sample in enumerate(self.data.train_dl): 
             self.net.train()
-            images, labels = sample[0].to(
+            xb, yb = sample[0].to(
                 self.device), sample[1].to(self.device)
-            outputs = self.net(images)
-            loss = self.crition(outputs, labels)
+            bs, n_crops, c, h, w = xb.size()
+            xb = xb.view(-1, c, h, w)
+            outputs = self.net(xb)
+            if self.n_crops > 0:
+                outputs = outputs.view(bs, n_crops, -1).mean(1)
+            loss = self.crition(outputs, yb)
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -272,37 +277,51 @@ if __name__ == "__main__":
     train_dataset_config = {
         'root_dir': "C:\\Users\\thanhdh6\\Documents\\datasets\\menwomen1",
         "csv_file_path": 'C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier\\data\\train.csv',
-        'img_size': 224,
-        'label_cols_list': ['Labels']
+        'img_size':224,
+        'label_cols_list': ['Labels'],
+        'imagenet':True,
+        'img_size':256,
+        'crop_size':250,
+        'n_crops':5,
+        'pixel_mean':128,
+        'pixel_std':50
     }
     test_dataset_config = {
         'root_dir': "C:\\Users\\thanhdh6\\Documents\\datasets\\menwomen1",
         'csv_file_path': 'C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier\\data\\test.csv',
-        'img_size': 224,
-        'label_cols_list': ['Labels']
+        'img_size':224,
+        'label_cols_list': ['Labels'],
+        'imagenet':True,
+        'mode':'val',
+        'crop_size':250,
     }
     cfgs = {'img_size': 224, 'bs': 2, 'n_workers': 2}
 
-    transform_train = transforms.Compose([
-        transforms.ToPILImage(),
-        # transforms.ToTensor(),
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
-    ])
+    # test_dataset = MenWomenDataset(
+    #     root_dir, test_csv_file_path, label_cols_list=label_cols_list, cfg)
+    # train_dataset = MenWomenDataset(root_dir, train_csv_file_path, label_cols_list=label_cols_list, cfg)
+    # transform_train = transforms.Compose([
+    #     transforms.ToPILImage(),
+    #     # transforms.ToTensor(),
+    #     transforms.Resize(256),
+    #     transforms.CenterCrop(224),
+    #     transforms.ToTensor(),
+    #     transforms.Normalize((0.485, 0.456, 0.406),(0.229, 0.224, 0.225)),
+    # ])
     transform_test = transforms.Compose([
         transforms.ToPILImage(),
         # transforms.ToTensor(),
         transforms.Resize(256),
         transforms.CenterCrop(224),
         transforms.ToTensor(),
-        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+        transforms.Normalize((0.485, 0.456, 0.406),(0.229, 0.224, 0.225))
     ])
-    transforms = [transform_train, transform_test]
+
+    # transforms=[transform_train,transform_test]
+
     dataset_configs = (train_dataset_config, test_dataset_config)
-    datahandler = DataHandler(ds_class=(MenWomenDataset, MenWomenDataset),
-                              transforms=transforms, dataset_configs=dataset_configs, configs=cfgs)
+    datahandler = DataHandler(ds_class=(MenWomenDataset, MenWomenDataset), transforms=None, dataset_configs=dataset_configs, configs=cfgs)
+    # datahandler.show_batch(1,6,mode='train')
 
     # trainer buiding
     trainer_configs = {
@@ -310,19 +329,19 @@ if __name__ == "__main__":
         'validate': 0.7,
         'lr': 0.001,
         'num_epochs': 10,
-        'steps_save_loss': 100,
+        'steps_save_loss': 2,
         'output_folder': 'C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier\\train\\logs',
         'device': 'cpu',
         'gpu_id': 0,
-        # 'batch_size':2,
         'lr_schedule':None,
         'config_files':'C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier\\configs\\cifar_configs.py',
-        'loss_file':"loss_file.txt"
+        'loss_file':"loss_file.txt",
+        'n_crops':5
 
     }
     
     net = TransferNet(model_base=resnet18, pretrain=True,
-                      fc_channels=[512], num_classes=2)
+                      fc_channels=[2048], num_classes=2)
     optimizer_config={
         'momentum':0.9
     }
@@ -331,7 +350,7 @@ if __name__ == "__main__":
     crition= nn.CrossEntropyLoss()
     lr_schedule = None
     trainer = Trainer(net, datahandler, optimizer, crition,transform_test, metric, lr_schedule=None,configs=trainer_configs)
-    # trainer.train()
-    trainer.load_checkpoint("C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier\\train\\logs\\checkpoint_9")
-    print(trainer.evaluate(mode="val",metric=Accuracy()))
+    trainer.train()
+    # trainer.load_checkpoint("C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier\\train\\logs\\checkpoint_9")
+    # print(trainer.evaluate(mode="val",metric=Accuracy()))
 
