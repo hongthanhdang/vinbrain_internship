@@ -6,7 +6,9 @@ from torch import nn
 from torch.optim import SGD
 from torchvision.models import resnet18
 from torchvision import transforms
+from torch_lr_finder import LRFinder
 from tqdm import tqdm
+from torch.optim.lr_scheduler import OneCycleLR
 import sys
 sys.path.append("C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier")
 from utils.utils import save_loss_to_file,AverageMeter
@@ -18,7 +20,7 @@ from data.men_women_dataset import MenWomenDataset
 
 
 class Trainer:
-    def __init__(self,net, data, optimizer, crition,transform_test, metric, lr_schedule,lr_scheduler=None,  configs=None):
+    def __init__(self,net, data, optimizer, criterion,transform_test, metric, lr_scheduler=None,  configs=None):
         '''
         target: initialize trainer for training
         inputs:
@@ -36,7 +38,7 @@ class Trainer:
         self.lr = configs['lr']
         self.batch_size = data.bs
         self.num_epochs = configs['num_epochs']
-        self.crition = crition
+        self.criterion = criterion
         self.net = net
         self.optimizer = optimizer
         self.transform_test = transform_test
@@ -46,12 +48,9 @@ class Trainer:
         self.metric = metric
 
         # schedule learning rate
-        if configs['lr_schedule'] is None:
-            self.lr_scheduler = None
-        else:
-            self.lr_scheduler = lr_scheduler
-            self.lr_shedule_metric = lr_schedule["metric"]
-            self.lr_schedule_step_type = lr_schedule["step_type"]
+        if lr_scheduler is not None:
+            steps_per_epoch=len(data.train_dl)//self.batch_size
+            self.lr_scheduler = lr_scheduler(self.optimizer,max_lr=0.0005,epochs=self.num_epochs,steps_per_epoch=steps_per_epoch)
 
         # training process
         self.current_epoch = 0
@@ -78,7 +77,7 @@ class Trainer:
         self.summaryWriter = SummaryWriter(self.output_folder)
         self.global_step = 0
 
-    def train(self, loss_file=None):
+    def train(self,lr=None, lr_scheduler=None,loss_file=None,**kwargs):
         '''
         target: training the model
         input:
@@ -91,9 +90,9 @@ class Trainer:
             self.train_one_epoch()
             self.save_checkpoint()
 
-            if self.lr_scheduler is not None:
-                if self.lr_schedule_step_type == "epoch":
-                    self.schedule_lr()
+            # if self.lr_scheduler is not None:
+            #     if self.lr_schedule_step_type == "epoch":
+            #         self.schedule_lr()
 
     def test(self):
         '''
@@ -117,7 +116,7 @@ class Trainer:
             images, labels = sample[0].to(
                 self.device), sample[1].to(self.device)
             outputs = self.net(images)
-            loss = self.crition(outputs, labels)
+            loss = self.criterion(outputs, labels)
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -125,8 +124,7 @@ class Trainer:
 
             train_loss += loss.item()
             if self.lr_scheduler is not None:
-                if self.lr_schedule_step_type == "batch":
-                    self.schedule_lr(i)
+                    self.lr_scheduler.step()
             self.summaryWriter.add_scalar(
                 'learning_rate', self.optimizer.param_groups[0]['lr'], self.global_step)
             self.summaryWriter.add_scalars('loss',
@@ -152,22 +150,7 @@ class Trainer:
                     'acc', {'acc_val': val_acc_avg}, self.global_step)
             self.global_step += 1
 
-    def schedule_lr(self, iteration=0):
-        '''
-        target: update learning rate schedule
-        input:
-            -iteration: Interger - iteration of each epoch, using for mode batch
-        '''
-        if not self.lr_scheduler is None:
-            if self.lr_shedule_metric is not None:
-                if self.lr_shedule_metric == "epoch":
-                    self.lr_scheduler.step(
-                        self.current_epoch+iteration/self.batch_size)
-                else:
-                    val_loss, val_acc = self.evaluate(mode="val")
-                    self.lr_scheduler.step(eval(self.lr_shedule_metric))
-            else:
-                self.lr_scheduler.step()
+    # 
 
     def evaluate(self, mode="val", metric=None):
         '''
@@ -193,7 +176,7 @@ class Trainer:
             for xb,yb in loader[mode]:
                 xb,yb = xb.to(self.device),yb.to(self.device)
                 output = self.net(xb)
-                loss = self.crition(output, yb)
+                loss = self.criterion(output, yb)
                 preds.append(output)
                 targets.append(yb)
                 val_loss_value.update(val=loss.item())
@@ -328,10 +311,17 @@ if __name__ == "__main__":
     }
     optimizer = SGD(net.parameters(),lr=1e-4,momentum=0.9)
     metric = Accuracy(threshold=0.5, from_logits=True)
-    crition= nn.CrossEntropyLoss()
-    lr_schedule = None
-    trainer = Trainer(net, datahandler, optimizer, crition,transform_test, metric, lr_schedule=None,configs=trainer_configs)
-    # trainer.train()
-    trainer.load_checkpoint("C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier\\train\\logs\\checkpoint_9")
-    print(trainer.evaluate(mode="val",metric=Accuracy()))
+    criterion= nn.CrossEntropyLoss()
+    # "metric":None,
+    # "step_type":"iteration",
+    # "schedule_args":{
+    #     "max_lr":.0001,
+    #     "epochs": num_epochs,
+    #     "steps_per_epoch":steps_per_epoch+1
+    # }
+    # lr_scheduler=OneCycleLR(metric=None,)
+    trainer = Trainer(net, datahandler, optimizer, criterion,transform_test, metric, lr_scheduler=OneCycleLR,configs=trainer_configs)
+    trainer.train()
+    # trainer.load_checkpoint("C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier\\train\\checkpoints\\checkpoint_39")
+    # print(trainer.evaluate(mode="val",metric=Accuracy()))
 
