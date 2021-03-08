@@ -7,6 +7,8 @@ from torch.optim import SGD
 from torchvision.models import resnet18
 from torchvision import transforms
 from tqdm import tqdm
+from torch.optim.lr_scheduler import OneCycleLR
+
 import sys
 sys.path.append("C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier")
 from utils.utils import save_loss_to_file,AverageMeter
@@ -18,7 +20,7 @@ from data.men_women_dataset import MenWomenDataset
 
 
 class Trainer:
-    def __init__(self,net, data, optimizer, crition,transform_test, metric, lr_schedule,lr_scheduler=None,  configs=None):
+    def __init__(self,net, data, optimizer, crition,transform_test, metric,lr_scheduler=None,  configs=None):
         '''
         target: initialize trainer for training
         inputs:
@@ -40,18 +42,20 @@ class Trainer:
         self.net = net
         self.optimizer = optimizer
         self.transform_test = transform_test
+        self.n_crops=configs['n_crops']
         # data
         self.data = data
         # evaluate
         self.metric = metric
 
         # schedule learning rate
-        if configs['lr_schedule'] is None:
-            self.lr_scheduler = None
-        else:
-            self.lr_scheduler = lr_scheduler
-            self.lr_shedule_metric = lr_schedule["metric"]
-            self.lr_schedule_step_type = lr_schedule["step_type"]
+        if lr_scheduler is not None:
+            steps_per_epoch=len(data.train_dl)
+            self.lr_scheduler = lr_scheduler(self.optimizer,max_lr=0.0005,epochs=self.num_epochs,steps_per_epoch=steps_per_epoch)
+        # else:
+        #     self.lr_scheduler = lr_scheduler
+        #     self.lr_shedule_metric = lr_schedule["metric"]
+        #     self.lr_schedule_step_type = lr_schedule["step_type"]
 
         # training process
         self.current_epoch = 0
@@ -91,9 +95,9 @@ class Trainer:
             self.train_one_epoch()
             self.save_checkpoint()
 
-            if self.lr_scheduler is not None:
-                if self.lr_schedule_step_type == "epoch":
-                    self.schedule_lr()
+            # if self.lr_scheduler is not None:
+            #     if self.lr_schedule_step_type == "epoch":
+            #         self.schedule_lr()
 
     def test(self):
         '''
@@ -114,19 +118,24 @@ class Trainer:
         train_loss = 0
         for i, sample in enumerate(self.data.train_dl): 
             self.net.train()
-            images, labels = sample[0].to(
+            xb, yb = sample[0].to(
                 self.device), sample[1].to(self.device)
-            outputs = self.net(images)
-            loss = self.crition(outputs, labels)
+            bs, n_crops, c, h, w = xb.size()
+            xb = xb.view(-1, c, h, w)
+            outputs = self.net(xb)
+            if self.n_crops > 0:
+                outputs = outputs.view(bs, n_crops, -1).mean(1)
+            loss = self.crition(outputs, yb)
 
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
 
             train_loss += loss.item()
-            if self.lr_scheduler is not None:
-                if self.lr_schedule_step_type == "batch":
-                    self.schedule_lr(i)
+            self.lr_scheduler.step()
+            # if self.lr_scheduler is not None:
+            #     if self.lr_schedule_step_type == "batch":
+            #         self.schedule_lr(i)
             self.summaryWriter.add_scalar(
                 'learning_rate', self.optimizer.param_groups[0]['lr'], self.global_step)
             self.summaryWriter.add_scalars('loss',
@@ -152,22 +161,22 @@ class Trainer:
                     'acc', {'acc_val': val_acc_avg}, self.global_step)
             self.global_step += 1
 
-    def schedule_lr(self, iteration=0):
-        '''
-        target: update learning rate schedule
-        input:
-            -iteration: Interger - iteration of each epoch, using for mode batch
-        '''
-        if not self.lr_scheduler is None:
-            if self.lr_shedule_metric is not None:
-                if self.lr_shedule_metric == "epoch":
-                    self.lr_scheduler.step(
-                        self.current_epoch+iteration/self.batch_size)
-                else:
-                    val_loss, val_acc = self.evaluate(mode="val")
-                    self.lr_scheduler.step(eval(self.lr_shedule_metric))
-            else:
-                self.lr_scheduler.step()
+    # def schedule_lr(self, iteration=0):
+    #     '''
+    #     target: update learning rate schedule
+    #     input:
+    #         -iteration: Interger - iteration of each epoch, using for mode batch
+    #     '''
+    #     if not self.lr_scheduler is None:
+    #         if self.lr_shedule_metric is not None:
+    #             if self.lr_shedule_metric == "epoch":
+    #                 self.lr_scheduler.step(
+    #                     self.current_epoch+iteration/self.batch_size)
+    #             else:
+    #                 val_loss, val_acc = self.evaluate(mode="val")
+    #                 self.lr_scheduler.step(eval(self.lr_shedule_metric))
+    #         else:
+    #             self.lr_scheduler.step()
 
     def evaluate(self, mode="val", metric=None):
         '''
@@ -272,37 +281,51 @@ if __name__ == "__main__":
     train_dataset_config = {
         'root_dir': "C:\\Users\\thanhdh6\\Documents\\datasets\\menwomen1",
         "csv_file_path": 'C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier\\data\\train.csv',
-        'img_size': 224,
-        'label_cols_list': ['Labels']
+        'img_size':224,
+        'label_cols_list': ['Labels'],
+        'imagenet':True,
+        'img_size':256,
+        'crop_size':250,
+        'n_crops':5,
+        'pixel_mean':128,
+        'pixel_std':50
     }
     test_dataset_config = {
         'root_dir': "C:\\Users\\thanhdh6\\Documents\\datasets\\menwomen1",
         'csv_file_path': 'C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier\\data\\test.csv',
-        'img_size': 224,
-        'label_cols_list': ['Labels']
+        'img_size':224,
+        'label_cols_list': ['Labels'],
+        'imagenet':True,
+        'mode':'val',
+        'crop_size':250,
     }
     cfgs = {'img_size': 224, 'bs': 2, 'n_workers': 2}
 
-    transform_train = transforms.Compose([
-        transforms.ToPILImage(),
-        # transforms.ToTensor(),
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
-    ])
+    # test_dataset = MenWomenDataset(
+    #     root_dir, test_csv_file_path, label_cols_list=label_cols_list, cfg)
+    # train_dataset = MenWomenDataset(root_dir, train_csv_file_path, label_cols_list=label_cols_list, cfg)
+    # transform_train = transforms.Compose([
+    #     transforms.ToPILImage(),
+    #     # transforms.ToTensor(),
+    #     transforms.Resize(256),
+    #     transforms.CenterCrop(224),
+    #     transforms.ToTensor(),
+    #     transforms.Normalize((0.485, 0.456, 0.406),(0.229, 0.224, 0.225)),
+    # ])
     transform_test = transforms.Compose([
         transforms.ToPILImage(),
         # transforms.ToTensor(),
         transforms.Resize(256),
         transforms.CenterCrop(224),
         transforms.ToTensor(),
-        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+        transforms.Normalize((0.485, 0.456, 0.406),(0.229, 0.224, 0.225))
     ])
-    transforms = [transform_train, transform_test]
+
+    # transforms=[transform_train,transform_test]
+
     dataset_configs = (train_dataset_config, test_dataset_config)
-    datahandler = DataHandler(ds_class=(MenWomenDataset, MenWomenDataset),
-                              transforms=transforms, dataset_configs=dataset_configs, configs=cfgs)
+    datahandler = DataHandler(ds_class=(MenWomenDataset, MenWomenDataset), transforms=None, dataset_configs=dataset_configs, configs=cfgs)
+    # datahandler.show_batch(1,6,mode='train')
 
     # trainer buiding
     trainer_configs = {
@@ -310,28 +333,27 @@ if __name__ == "__main__":
         'validate': 0.7,
         'lr': 0.001,
         'num_epochs': 10,
-        'steps_save_loss': 100,
+        'steps_save_loss': 2,
         'output_folder': 'C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier\\train\\logs',
         'device': 'cpu',
         'gpu_id': 0,
-        # 'batch_size':2,
         'lr_schedule':None,
         'config_files':'C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier\\configs\\cifar_configs.py',
-        'loss_file':"loss_file.txt"
+        'loss_file':"loss_file.txt",
+        'n_crops':5
 
     }
     
     net = TransferNet(model_base=resnet18, pretrain=True,
-                      fc_channels=[512], num_classes=2)
+                      fc_channels=[2048], num_classes=2)
     optimizer_config={
         'momentum':0.9
     }
     optimizer = SGD(net.parameters(),lr=1e-4,momentum=0.9)
     metric = Accuracy(threshold=0.5, from_logits=True)
     crition= nn.CrossEntropyLoss()
-    lr_schedule = None
-    trainer = Trainer(net, datahandler, optimizer, crition,transform_test, metric, lr_schedule=None,configs=trainer_configs)
-    # trainer.train()
-    trainer.load_checkpoint("C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier\\train\\logs\\checkpoint_9")
-    print(trainer.evaluate(mode="val",metric=Accuracy()))
+    trainer = Trainer(net, datahandler, optimizer, crition,transform_test, metric, lr_scheduler=OneCycleLR,configs=trainer_configs)
+    trainer.train()
+    # trainer.load_checkpoint("C:\\Users\\thanhdh6\\Documents\\projects\\vinbrain_internship\\image_classifier\\train\\logs\\checkpoint_9")
+    # print(trainer.evaluate(mode="val",metric=Accuracy()))
 
