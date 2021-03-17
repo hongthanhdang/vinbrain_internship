@@ -97,14 +97,14 @@ def matching_templates(org_img, cfg, mode='train'):
         if cfg.n_crops == 10:
             trans = transforms.Compose(
                 [transforms.RandomResizedCrop(size=cfg.img_size, scale=(0.8, 1.0)),
-                 transforms.RandomRotation(degrees=5), transforms.ColorJitter(),
+                 transforms.RandomRotation(degrees=20), transforms.ColorJitter(),
                  transforms.TenCrop(size=cfg.crop_size),
                  transforms.Lambda(lambda crops: torch.stack([transforms.ToTensor()(crop) for crop in crops])),
                  transforms.Lambda(lambda crops: torch.stack([normalize(crop) for crop in crops]))])
         elif cfg.n_crops == 5:
             trans = transforms.Compose(
                 [transforms.RandomResizedCrop(size=cfg.img_size, scale=(0.8, 1.0)),
-                 transforms.RandomRotation(degrees=5), transforms.ColorJitter(),
+                 transforms.RandomRotation(degrees=20), transforms.ColorJitter(),
                  transforms.RandomHorizontalFlip(), transforms.FiveCrop(size=cfg.crop_size),
                  transforms.Lambda(
                      lambda crops: torch.stack([transforms.ToTensor()(crop) for crop in crops])),
