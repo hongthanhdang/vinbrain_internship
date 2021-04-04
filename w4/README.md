@@ -6,5 +6,5 @@
 4. Read paper A Multigrid Method for Efficiently Training Video Models.
 5. Read paper Late Temporal Modeling in 3D CNN Architecture with BERT for AR.
 # Results
-1. Acchieve 92.56% on men/women datasets.
+1. Achieve 92.56% on men/women datasets.
 2. Have overal view on video classification problem.
