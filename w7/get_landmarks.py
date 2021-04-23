@@ -35,7 +35,8 @@ class FaceLandmark:
         preds += 1
         preds *= (image_size[0] // 2)
         preds=np.round(preds).astype(np.int)
-        indexs=[1,17,2,4,6,0,22,20,18,52,61,71,53,54,57,63,67,56,59,77,80,83,86,72,73,74,35,39,33,40,89,93,87,94]
+        # indexs=[1,17,2,4,6,0,22,20,18,52,61,71,53,54,57,63,67,56,59,77,80,83,86,72,73,74,35,39,33,40,89,93,87,94]
+        indexs=[35,72,93]
         return preds[:,indexs,:]
 if __name__ == '__main__':
     t1=datetime.now()
